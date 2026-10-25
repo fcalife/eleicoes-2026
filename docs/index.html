@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lula × Flávio, seção a seção</title>
+<meta name="description" content="Comparação seção a seção entre o 1º e o 2º turno de 2026 e projeção do resultado a partir dos boletins de urna do TSE.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400&display=swap">
+<style>
+/* Tokens replacing the ones the Claude dashboard runtime provided. Series 1 = Lula, series 2 = Flávio. */
+:root {
+  --color-bg: #f6f7f9; --color-panel: #ffffff; --color-fg: #1b1f24; --color-fg-muted: #5c6470; --color-border-line: #dde1e6;
+  --color-ok: #1d7a46; --color-warn: #a35f00; --color-bad: #b42330;
+  --series-1: #c8323c; --series-2: #2f5fb3;
+  --cds-chart-axis: #9aa2ad; --cds-chart-grid: #e8ebef; --cds-chart-reference: #7d8590; --cds-chart-muted: #b5bcc5;
+  --cds-surface-popover: #ffffff; --cds-border: #d3d8de; --cds-shadow-popover: 0 4px 16px rgb(20 30 45 / .12); --cds-text-secondary: #5c6470;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --cds-font-size-caption: .8125rem; --cds-font-size-body: 1rem; --cds-font-size-heading: 1.0625rem; --cds-font-size-title: 1.75rem;
+  --cds-font-weight-medium: 500;
+  --cds-gap-xs: .25rem; --cds-gap-sm: .5rem; --cds-gap-md: 1rem; --cds-gap-lg: 1.5rem;
+  --cds-pad-xs: .25rem; --cds-pad-sm: .5rem; --cds-pad-lg: 1.25rem; --cds-radius: 8px; --cds-dur-slow: .3s;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #12151a; --color-panel: #1a1e25; --color-fg: #e7eaee; --color-fg-muted: #9aa3ae; --color-border-line: #2c323b;
+    --color-ok: #4cc283; --color-warn: #e0a243; --color-bad: #f0707a;
+    --series-1: #ef6a72; --series-2: #6f9be8;
+    --cds-chart-axis: #5d6672; --cds-chart-grid: #262c34; --cds-chart-reference: #8a939e; --cds-chart-muted: #4a525d;
+    --cds-surface-popover: #222831; --cds-border: #353c46; --cds-shadow-popover: 0 4px 16px rgb(0 0 0 / .4); --cds-text-secondary: #9aa3ae;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-sans); font-size: 15px;
+  padding-block: 1.5rem 3rem; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.dash-skeleton { position: relative; color: transparent; }
+.dash-skeleton::after { content: ""; position: absolute; inset: 0; border-radius: var(--cds-radius); background: var(--cds-chart-grid);
+  animation: pulse 1.2s ease-in-out infinite alternate; }
+@keyframes pulse { from { opacity: .5; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dash-skeleton::after { animation: none; } }
+.lf-foot { max-width: 72rem; margin: 1.5rem auto 0; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.lf-foot a { color: inherit; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+// Minimal stand-in for the Claude dashboard runtime: loads docs/data/*.json and offers the calls the page uses.
+window.dash = (() => {
+  const store = {}, calcs = {}, subs = [];
+  const notify = () => {
+    for (const [id, c] of Object.entries(calcs)) {
+      const ins = c.inputs.map((i) => store[i]);
+      store[id] = ins.every((s) => s.status === 'ok') ? { status: 'ok', data: c.fn(...ins.map((s) => s.data)) }
+        : { status: ins.some((s) => s.status === 'error') ? 'error' : 'loading', data: [] };
+    }
+    subs.forEach((f) => f());
+  };
+  ['resumo', 'por_uf', 'delta_hist', 'secoes'].forEach((id) => {
+    store[id] = { status: 'loading', data: [] };
+    fetch(`data/${id}.json`, { cache: 'no-cache' })
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then((d) => { store[id] = { status: 'ok', data: d }; }, () => { store[id] = { status: 'error', data: [] }; })
+      .then(notify);
+  });
+  let t; addEventListener('resize', () => { clearTimeout(t); t = setTimeout(notify, 150); });
+  return {
+    data: (id) => store[id] || { status: 'missing', data: [] },
+    onData: (f) => { subs.push(f); f(); },
+    calc: (id, c) => { calcs[id] = c; store[id] = { status: 'loading', data: [] }; },
+    colors: ['var(--series-1)', 'var(--series-2)'],
+  };
+})();
+</script>
+</head>
+<body>
+<style>
+.lf { display: flex; flex-direction: column; gap: var(--cds-gap-lg); font-family: var(--font-sans); font-variant-numeric: tabular-nums; max-width: 72rem; margin-inline: auto; }
+.lf h1 { font-family: var(--font-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
+.lf h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.lf p { margin: 0; }
+.lf-takeaway { font-size: var(--cds-font-size-body); max-width: 65ch; line-height: 1.5; }
+.lf-muted { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.lf-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-sm); min-width: 0; }
+.lf-grid { display: grid; gap: var(--cds-gap-md); grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); }
+.lf-tiles { display: grid; gap: var(--cds-gap-md); grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); }
+.lf-big { font-family: var(--font-serif); font-weight: 400; font-size: var(--cds-font-size-title); line-height: 1.1; }
+.lf-pill { display: inline-flex; align-items: center; gap: var(--cds-gap-xs); padding: 2px var(--cds-pad-sm); border-radius: 999px; border: 1px solid currentColor; font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); }
+.lf-pill::before { content: ""; width: .5rem; height: .5rem; border-radius: 50%; background: currentColor; }
+.lf-pill[data-status="Confiável"] { color: var(--color-ok); }
+.lf-pill[data-status="Indicativa"] { color: var(--color-warn); }
+.lf-pill[data-status="Não confiável"] { color: var(--color-bad); }
+.lf-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cds-gap-sm) var(--cds-gap-md); }
+.lf-split { position: relative; display: flex; height: 2.5rem; border-radius: var(--cds-radius); overflow: hidden; }
+.lf-split > div { display: flex; align-items: center; padding-inline: var(--cds-pad-sm); color: var(--color-bg); font-weight: var(--cds-font-weight-medium); white-space: nowrap; overflow: hidden; }
+.lf-split > div:last-of-type { justify-content: flex-end; }
+.lf-split .lf-half { position: absolute; left: 50%; top: -4px; bottom: -4px; border-left: 2px dashed var(--color-fg); padding: 0; }
+.lf-legend { display: flex; justify-content: space-between; gap: var(--cds-gap-md); flex-wrap: wrap; }
+.lf-chart { position: relative; min-height: 22rem; }
+.lf-chart.short { min-height: 16rem; }
+.lf-chart svg text { fill: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.lf-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); white-space: nowrap; z-index: 2; }
+.lf-tip .k { color: var(--cds-text-secondary); }
+.lf-sw { display: inline-block; width: .6rem; height: .6rem; border-radius: 2px; margin-right: 4px; }
+.lf-tablebox { max-height: 32rem; overflow: auto; }
+.lf table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); }
+.lf th, .lf td { padding: var(--cds-pad-xs) var(--cds-pad-sm); text-align: right; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.lf th:first-child, .lf td:first-child, .lf th:nth-child(2), .lf td:nth-child(2), .lf td:last-child, .lf th:last-child { text-align: left; }
+.lf th { position: sticky; top: 0; background: var(--color-panel); }
+.lf th button { all: unset; cursor: pointer; font-weight: var(--cds-font-weight-medium); }
+.lf th button:focus-visible { outline: 2px solid var(--color-fg); }
+.lf .up { color: var(--color-ok); } .lf .down { color: var(--color-bad); }
+.lf-fail { display: flex; align-items: center; justify-content: center; gap: var(--cds-gap-xs); color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); height: 100%; min-height: inherit; }
+.lf-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+.lf-method { max-width: 65ch; line-height: 1.5; display: flex; flex-direction: column; gap: var(--cds-gap-sm); }
+.lf-method ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: var(--cds-gap-xs); }
+</style>
+
+<div class="lf">
+  <header style="display:flex;flex-direction:column;gap:var(--cds-gap-sm)">
+    <h1 id="titulo">Lula × Flávio, seção a seção</h1>
+    <p class="lf-takeaway" id="resumo-frase">
+      Com <span data-source="resumo" data-field="pct_votos_1t_apurados" data-row="0" data-fmt="pct3">—</span> dos votos do 1º turno já apurados também no 2º,
+      a extrapolação dá Lula <b data-source="resumo" data-field="lula_proj_pct" data-row="0" data-fmt="pct">—</b>
+      × Flávio <b data-source="resumo" data-field="flavio_proj_pct" data-row="0" data-fmt="pct">—</b> dos votos válidos.
+    </p>
+    <div class="lf-status">
+      <span class="lf-pill" id="pill" data-source="confiabilidade" data-field="status" data-row="0">—</span>
+      <span class="lf-muted"><span data-source="confiabilidade" data-field="local_pct" data-row="0" data-fmt="pct">—</span> dos votos ainda não apurados foram estimados com dados do próprio município ou UF; o resto usa a média regional ou nacional.</span>
+      <span class="lf-muted">Dados do TSE coletados em <span data-source="resumo" data-field="atualizado" data-row="0" data-fmt="data">—</span>.</span>
+    </div>
+  </header>
+
+  <section class="lf-card" id="projecao">
+    <h2>Projeção do 2º turno</h2>
+    <p class="lf-muted">Votos válidos. Seções apuradas entram com o resultado real; as demais, com o voto do 1º turno ajustado pela variação das seções vizinhas já apuradas.</p>
+    <div class="lf-split dash-skeleton" id="split" data-source="resumo"></div>
+    <div class="lf-legend">
+      <span><span class="lf-sw" id="sw-l"></span>Lula <b class="lf-big" data-source="resumo" data-field="lula_proj_pct" data-row="0" data-fmt="pct">—</b><br><span class="lf-muted"><span data-source="resumo" data-field="lula_proj" data-row="0" data-fmt="int">—</span> votos</span></span>
+      <span class="lf-muted" style="align-self:center">Linha tracejada: 50%</span>
+      <span style="text-align:right"><span class="lf-sw" id="sw-f"></span>Flávio <b class="lf-big" data-source="resumo" data-field="flavio_proj_pct" data-row="0" data-fmt="pct">—</b><br><span class="lf-muted"><span data-source="resumo" data-field="flavio_proj" data-row="0" data-fmt="int">—</span> votos</span></span>
+    </div>
+  </section>
+
+  <section class="lf-tiles" id="numeros">
+    <div class="lf-card">
+      <span class="lf-muted">Seções apuradas no 2º turno</span>
+      <span class="lf-big" data-source="resumo" data-field="secoes_apuradas" data-row="0" data-fmt="int">—</span>
+      <span class="lf-muted">de <span data-source="resumo" data-field="secoes_total" data-row="0" data-fmt="int">—</span> seções (agregações somadas)</span>
+    </div>
+    <div class="lf-card">
+      <span class="lf-muted">Fatia de Lula no voto a dois, seção a seção</span>
+      <span class="lf-big" data-source="resumo" data-field="delta_media_pp" data-row="0" data-fmt="pp">—</span>
+      <span class="lf-muted">variação média do 1º para o 2º turno; mediana <span data-source="resumo" data-field="delta_mediana_pp" data-row="0" data-fmt="pp">—</span></span>
+    </div>
+    <div class="lf-card">
+      <span class="lf-muted">Seções onde Lula ganhou fatia</span>
+      <span class="lf-big" data-source="resumo" data-field="pct_secoes_lula_ganhou" data-row="0" data-fmt="pct">—</span>
+      <span class="lf-muted">entre as seções já apuradas</span>
+    </div>
+    <div class="lf-card">
+      <span class="lf-muted">Votos nas seções apuradas, 1º → 2º turno</span>
+      <span class="lf-big"><span data-source="variacao_apuradas" data-field="lula_var_pct" data-row="0" data-fmt="spct">—</span> <span class="lf-muted">Lula</span></span>
+      <span class="lf-muted">Flávio <span data-source="variacao_apuradas" data-field="flavio_var_pct" data-row="0" data-fmt="spct">—</span>. A diferença inclui a mudança de comparecimento.</span>
+    </div>
+  </section>
+
+  <div class="lf-grid">
+    <section class="lf-card" id="dispersao">
+      <h2>Cada seção, 1º turno × 2º turno</h2>
+      <p class="lf-muted">Fatia de Lula no voto a dois (Lula ÷ Lula + Flávio). Acima da diagonal, Lula cresceu na seção. Amostra de até 3.000 seções apuradas.</p>
+      <div class="lf-chart dash-skeleton" id="scatter" data-source="secoes"></div>
+    </section>
+    <section class="lf-card" id="distribuicao">
+      <h2>Quanto a fatia de Lula mudou por seção</h2>
+      <p class="lf-muted">Número de seções por variação em pontos percentuais, do 1º para o 2º turno. Extremos agrupados em ±20.</p>
+      <div class="lf-chart dash-skeleton" id="hist" data-source="delta_hist"></div>
+    </section>
+  </div>
+
+  <section class="lf-card" id="ufs">
+    <h2>Por estado</h2>
+    <p class="lf-muted">Variação de votos medida só nas seções já apuradas da UF. A coluna da base diz de onde veio a maior parte da extrapolação dos votos que faltam.</p>
+    <div class="lf-tablebox dash-skeleton" id="tablebox">
+      <table id="tabela" data-source="por_uf" data-row-key="uf">
+        <thead><tr>
+          <th data-field="uf"><button type="button" data-k="uf">UF</button></th>
+          <th data-field="regiao"><button type="button" data-k="regiao">Região</button></th>
+          <th data-field="secoes_apuradas"><button type="button" data-k="secoes_apuradas">Apuradas</button></th>
+          <th data-field="secoes_total"><button type="button" data-k="secoes_total">Seções</button></th>
+          <th data-field="lula_var_pct"><button type="button" data-k="lula_var_pct">Lula 1º→2º</button></th>
+          <th data-field="flavio_var_pct"><button type="button" data-k="flavio_var_pct">Flávio 1º→2º</button></th>
+          <th data-field="lula_1t_pct"><button type="button" data-k="lula_1t_pct">Lula 1º turno</button></th>
+          <th data-field="lula_proj_pct"><button type="button" data-k="lula_proj_pct">Lula projetado</button></th>
+          <th data-field="nivel_extrapolacao"><button type="button" data-k="nivel_extrapolacao">Base da extrapolação</button></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lf-card lf-method" id="metodo">
+    <h2>Como a projeção é feita</h2>
+    <ul>
+      <li>O 1º turno vem do arquivo oficial de votação por seção do TSE. O 2º turno vem dos boletins de urna que o TSE publica conforme as urnas são recebidas, lidos um a um.</li>
+      <li>Seções agregadas numa mesma urna são somadas, para que os dois turnos sempre comparem os mesmos eleitores.</li>
+      <li>Para cada seção ainda sem boletim, os votos de Lula e de Flávio no 1º turno são multiplicados pela variação de cada um nas seções apuradas do mesmo município. Com menos de 10 seções apuradas no município, usa-se a UF; depois a região; por último, o Brasil.</li>
+      <li>Fatias de 1º turno nesta página são do voto a dois (Lula ÷ Lula + Flávio), não do total de válidos com todos os candidatos.</li>
+      <li>As primeiras seções a chegar não são sorteadas, nem dentro de um município. Enquanto o selo acima não disser "Confiável", leia a projeção como indicativa.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(() => {
+  const nf = (d) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const sign = (v, s) => (v > 0 ? '+' : v < 0 ? '−' : '') + s(Math.abs(v));
+  const FMT = {
+    pct: (v) => nf(2).format(v) + '%',
+    pct3: (v) => nf(3).format(v) + '%',
+    spct: (v) => sign(v, (x) => nf(1).format(x) + '%'),
+    pp: (v) => sign(v, (x) => nf(2).format(x) + ' p.p.'),
+    int: (v) => new Intl.NumberFormat('pt-BR').format(Math.round(v)),
+    data: (v) => new Date(v).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' }) + ' (Brasília)',
+  };
+  window.lfFmt = FMT;
+
+  dash.calc('variacao_apuradas', {
+    inputs: ['resumo'],
+    title: 'Variação nas seções apuradas',
+    description: 'Variação percentual dos votos de cada candidato entre os turnos, somando só as seções já apuradas no 2º turno.',
+    fn: (resumo) => [{
+      lula_var_pct: Math.round(10000 * (resumo[0].lula_2t_apuradas / resumo[0].lula_1t_apuradas - 1)) / 100,
+      flavio_var_pct: Math.round(10000 * (resumo[0].flavio_2t_apuradas / resumo[0].flavio_1t_apuradas - 1)) / 100,
+    }],
+  });
+  dash.calc('confiabilidade', {
+    inputs: ['resumo'],
+    title: 'Confiabilidade da projeção',
+    description: 'Parcela dos votos não apurados extrapolada com dados do próprio município ou UF: 80% ou mais é confiável, 40% ou mais é indicativa.',
+    fn: (resumo) => {
+      const local = Math.round(100 * (resumo[0].nivel_municipio + resumo[0].nivel_uf)) / 100;
+      return [{ local_pct: local, status: local >= 80 ? 'Confiável' : local >= 40 ? 'Indicativa' : 'Não confiável' }];
+    },
+  });
+
+  dash.onData(() => {
+    document.querySelectorAll('.lf [data-field][data-row="0"]').forEach((el) => {
+      const r = dash.data(el.dataset.source);
+      const v = r.status === 'ok' && r.data[0] ? r.data[0][el.dataset.field] : null;
+      el.textContent = v == null ? '—' : el.dataset.fmt ? FMT[el.dataset.fmt](v) : String(v);
+    });
+    const c = dash.data('confiabilidade');
+    document.getElementById('pill').dataset.status = c.status === 'ok' && c.data[0] ? c.data[0].status : '';
+  });
+})();
+</script>
+
+<script>
+(() => {
+  const fail = (el, st) => {
+    el.classList.toggle('dash-skeleton', st === 'loading');
+    el.innerHTML = '';
+    if (st === 'error' || st === 'connect' || st === 'declined' || st === 'missing') {
+      const d = document.createElement('div'); d.className = 'lf-fail'; d.textContent = 'Falha ao carregar'; el.appendChild(d);
+    }
+  };
+  const C = () => dash.colors;
+  const tipBox = (host) => { const t = document.createElement('div'); t.className = 'lf-tip'; t.hidden = true; host.appendChild(t); return t; };
+  const tipLine = (t, rows) => {
+    t.textContent = '';
+    rows.forEach(([cls, txt, color]) => {
+      const d = document.createElement('div'); if (cls) d.className = cls;
+      if (color) { const s = document.createElement('span'); s.className = 'lf-sw'; s.style.background = color; d.appendChild(s); }
+      d.appendChild(document.createTextNode(txt)); t.appendChild(d);
+    });
+  };
+  const placeTip = (t, host, x, y) => {
+    t.hidden = false;
+    const w = t.offsetWidth, h = t.offsetHeight, W = host.clientWidth;
+    t.style.left = Math.max(0, Math.min(W - w, x + 12)) + 'px';
+    t.style.top = Math.max(0, y - h - 8) + 'px';
+  };
+
+  // split bar
+  dash.onData(() => {
+    const el = document.getElementById('split'), r = dash.data('resumo');
+    document.getElementById('sw-l').style.background = C()[0];
+    document.getElementById('sw-f').style.background = C()[1];
+    if (r.status !== 'ok' || !r.data[0]) return fail(el, r.status);
+    el.classList.remove('dash-skeleton'); el.innerHTML = '';
+    const { lula_proj_pct: l, flavio_proj_pct: f } = r.data[0];
+    [[l, C()[0], 'Lula'], [f, C()[1], 'Flávio']].forEach(([v, col, nm]) => {
+      const d = document.createElement('div'); d.style.width = v + '%'; d.style.background = col;
+      d.setAttribute('aria-label', `${nm} ${window.lfFmt.pct(v)}`); el.appendChild(d);
+    });
+    const h = document.createElement('span'); h.className = 'lf-half'; el.appendChild(h);
+  });
+
+  // scatter
+  dash.onData(() => {
+    const el = document.getElementById('scatter'), r = dash.data('secoes');
+    if (r.status !== 'ok') return fail(el, r.status);
+    el.classList.remove('dash-skeleton'); el.innerHTML = '';
+    const rows = r.data, W = el.clientWidth, H = Math.min(Math.max(W * 0.8, 280), 420);
+    const m = { t: 12, r: 24, b: 36, l: 44 };
+    const x = d3.scaleLinear([0, 100], [m.l, W - m.r]), y = d3.scaleLinear([0, 100], [H - m.b, m.t]);
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    const gx = svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(5).tickFormat((v) => v + '%'));
+    const gy = svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickFormat((v) => v + '%'));
+    [gx, gy].forEach((g) => { g.attr('font-size', null).attr('font-family', null); g.select('.domain').attr('stroke', 'var(--cds-chart-axis)'); g.selectAll('line').attr('stroke', 'var(--cds-chart-grid)'); });
+    svg.append('line').attr('x1', x(0)).attr('y1', y(0)).attr('x2', x(100)).attr('y2', y(100)).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '4 4');
+    svg.append('text').attr('x', W - m.r).attr('y', H - 4).attr('text-anchor', 'end').text('1º turno');
+    svg.append('text').attr('x', m.l + 4).attr('y', m.t + 10).text('2º turno');
+    const col = (d) => d.lula_share_2t > d.lula_share_1t ? C()[0] : d.lula_share_2t < d.lula_share_1t ? C()[1] : 'var(--cds-chart-muted)';
+    svg.append('g').selectAll('circle').data(rows).join('circle')
+      .attr('cx', (d) => x(d.lula_share_1t)).attr('cy', (d) => y(d.lula_share_2t)).attr('r', rows.length > 1500 ? 2 : 3)
+      .attr('fill', col).attr('fill-opacity', 0.6);
+    const hi = svg.append('circle').attr('r', 5).attr('fill', 'none').attr('stroke', 'var(--color-fg)').attr('stroke-width', 1.5).attr('visibility', 'hidden');
+    const tip = tipBox(el), del = d3.Delaunay.from(rows, (d) => x(d.lula_share_1t), (d) => y(d.lula_share_2t));
+    svg.on('pointermove', (ev) => {
+      const [px, py] = d3.pointer(ev), i = del.find(px, py), d = rows[i];
+      if (d == null) return;
+      hi.attr('cx', x(d.lula_share_1t)).attr('cy', y(d.lula_share_2t)).attr('visibility', 'visible');
+      tipLine(tip, [
+        ['k', `${d.municipio || '—'} (${d.uf}) · seção ${d.secao.split('-').slice(2).join('/')}`],
+        ['', `Lula ${d.lula_1t} → ${d.lula_2t}`, C()[0]],
+        ['', `Flávio ${d.flavio_1t} → ${d.flavio_2t}`, C()[1]],
+        ['k', `Fatia de Lula ${window.lfFmt.pct(d.lula_share_1t)} → ${window.lfFmt.pct(d.lula_share_2t)}`],
+      ]);
+      placeTip(tip, el, x(d.lula_share_1t) * el.clientWidth / W, y(d.lula_share_2t) * el.clientWidth / W);
+    }).on('pointerleave', () => { tip.hidden = true; hi.attr('visibility', 'hidden'); });
+  });
+
+  // histogram
+  dash.onData(() => {
+    const el = document.getElementById('hist'), r = dash.data('delta_hist');
+    if (r.status !== 'ok') return fail(el, r.status);
+    el.classList.remove('dash-skeleton'); el.innerHTML = '';
+    const rows = r.data, W = el.clientWidth, H = 256, m = { t: 12, r: 24, b: 36, l: 44 };
+    const x = d3.scaleBand(rows.map((d) => d.delta_pp), [m.l, W - m.r]).padding(0.15);
+    const y = d3.scaleLinear([0, d3.max(rows, (d) => d.secoes) || 1], [H - m.b, m.t]).nice();
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    const gy = svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickSize(-(W - m.l - m.r)).tickFormat(d3.format(',')));
+    gy.attr('font-size', null).attr('font-family', null).select('.domain').remove();
+    gy.selectAll('line').attr('stroke', 'var(--cds-chart-grid)');
+    const gx = svg.append('g').attr('transform', `translate(0,${H - m.b})`)
+      .call(d3.axisBottom(x).tickValues(rows.map((d) => d.delta_pp).filter((v) => v % 5 === 0)).tickFormat((v) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v) + (Math.abs(v) === 20 ? '+' : '')));
+    gx.attr('font-size', null).attr('font-family', null).select('.domain').attr('stroke', 'var(--cds-chart-axis)');
+    const col = (v) => v > 0 ? C()[0] : v < 0 ? C()[1] : 'var(--cds-chart-muted)';
+    svg.append('g').selectAll('rect').data(rows).join('rect')
+      .attr('x', (d) => x(d.delta_pp)).attr('width', x.bandwidth()).attr('y', (d) => y(d.secoes)).attr('height', (d) => y(0) - y(d.secoes))
+      .attr('rx', Math.min(4, x.bandwidth() / 2)).attr('fill', (d) => col(d.delta_pp));
+    svg.append('text').attr('x', W - m.r).attr('y', H - 4).attr('text-anchor', 'end').text('p.p. para Lula');
+    const tip = tipBox(el);
+    svg.append('g').selectAll('rect').data(rows).join('rect')
+      .attr('x', (d) => x(d.delta_pp)).attr('width', x.bandwidth()).attr('y', m.t).attr('height', H - m.b - m.t).attr('fill', 'transparent')
+      .on('pointermove', (ev, d) => {
+        tipLine(tip, [['k', `${d.delta_pp > 0 ? '+' : ''}${d.delta_pp} p.p.`], ['', `${new Intl.NumberFormat('pt-BR').format(d.secoes)} seções`]]);
+        const s = el.clientWidth / W; placeTip(tip, el, (x(d.delta_pp) + x.bandwidth() / 2) * s, y(d.secoes) * s);
+      }).on('pointerleave', () => { tip.hidden = true; });
+  });
+
+  // table
+  let sortK = 'secoes_total', sortDir = -1;
+  const draw = () => {
+    const box = document.getElementById('tablebox'), r = dash.data('por_uf'), tb = document.querySelector('#tabela tbody');
+    box.classList.toggle('dash-skeleton', r.status === 'loading');
+    tb.textContent = '';
+    document.querySelectorAll('#tabela th').forEach((th) => {
+      const k = th.querySelector('button').dataset.k;
+      th.setAttribute('aria-sort', k === sortK ? (sortDir > 0 ? 'ascending' : 'descending') : 'none');
+    });
+    if (r.status !== 'ok') return;
+    const F = window.lfFmt, nfi = new Intl.NumberFormat('pt-BR');
+    const rows = [...r.data].sort((a, b) => {
+      const va = a[sortK], vb = b[sortK];
+      if (va == null) return 1; if (vb == null) return -1;
+      return (typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'pt-BR')) * sortDir;
+    });
+    rows.forEach((d) => {
+      const tr = document.createElement('tr');
+      const cells = [
+        [d.uf], [d.regiao], [nfi.format(d.secoes_apuradas)], [nfi.format(d.secoes_total)],
+        [d.lula_var_pct == null ? '—' : F.spct(d.lula_var_pct)],
+        [d.flavio_var_pct == null ? '—' : F.spct(d.flavio_var_pct)],
+        [F.pct(d.lula_1t_pct)],
+        [F.pct(d.lula_proj_pct), d.lula_proj_pct > d.lula_1t_pct ? 'up' : d.lula_proj_pct < d.lula_1t_pct ? 'down' : ''],
+        [d.nivel_extrapolacao],
+      ];
+      cells.forEach(([t, cls]) => { const td = document.createElement('td'); td.textContent = t; if (cls) td.className = cls; tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+  };
+  document.querySelectorAll('#tabela th button').forEach((b) => b.addEventListener('click', () => {
+    sortDir = sortK === b.dataset.k ? -sortDir : (['uf', 'regiao', 'nivel_extrapolacao'].includes(b.dataset.k) ? 1 : -1);
+    sortK = b.dataset.k; draw();
+  }));
+  dash.onData(draw);
+})();
+</script>
+
+<footer class="lf-foot">Fonte: boletins de urna e votação por seção do <a href="https://resultados.tse.jus.br/">Tribunal Superior Eleitoral</a>. Projeção não oficial; método descrito acima.</footer>
+</body>
+</html>
