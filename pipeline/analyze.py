@@ -4,6 +4,8 @@ Unit of comparison = group of sections linked by aggregation in either round (un
 1st-round and 2nd-round votes always cover the same voters.
 Projection: for each unreported unit, L2 = L1 * rL and F2 = F1 * rF, where rX = sum(X2)/sum(X1) over
 reported units in the finest stratum with >= MIN reported units: municipality -> UF -> region -> Brazil.
+Hybrid: a municipality 100% totalized enters whole, from TSE's consolidated result, instead of its sections.
+Section-level statistics (swing per section, charts) still come from the section BUs.
 """
 import json, os, sys, statistics
 DATA = sys.argv[1]
@@ -39,48 +41,63 @@ for k in parent:
         if r is None: u['pend'] += 1
         else:
             u['L2'] += r.get(13, r.get('13', 0)); u['F2'] += r.get(22, r.get('22', 0)); u['V2'] += sum(r.values())
+mun2_path = os.path.join(DATA, 't2_municipios.json')
+mun2 = json.load(open(mun2_path)) if os.path.exists(mun2_path) else {}
+fechados = {k for k, r in mun2.items() if r['ts'] and r['st'] == r['ts']}
+mun_units = {}  # closed municipality -> one unit holding all its sections
 for root, u in units.items():
     uf, mun = root.split('-')[:2]
     u['strata'] = (f'{uf}-{mun}', uf, REGIAO[uf], 'BR')
     u['rep'] = u['pend'] == 0 and u['V2'] > 0
+    u['fechado'] = u['strata'][0] in fechados
+    if u['fechado']:
+        m = mun_units.setdefault(u['strata'][0], {'L1': 0, 'F1': 0, 'V1': 0, 'n': 0, 'strata': u['strata']})
+        m['L1'] += u['L1']; m['F1'] += u['F1']; m['V1'] += u['V1']; m['n'] += 1
+for k, m in mun_units.items():
+    m['L2'], m['F2'] = mun2[k]['13'], mun2[k]['22']
+# what the projection counts as known: closed municipalities whole, plus reported sections elsewhere
+cobertas = list(mun_units.values()) + [dict(u, n=1) for u in units.values() if u['rep'] and not u['fechado']]
 
-# ratios per stratum, from reported units
+# ratios per stratum, from known units (a[4] counts sections, so MIN means the same for both kinds)
 S = {}
-for u in units.values():
-    if not u['rep']: continue
+for u in cobertas:
     for s in u['strata']:
-        a = S.setdefault(s, [0, 0, 0, 0, 0]); a[0] += u['L1']; a[1] += u['F1']; a[2] += u['L2']; a[3] += u['F2']; a[4] += 1
+        a = S.setdefault(s, [0, 0, 0, 0, 0]); a[0] += u['L1']; a[1] += u['F1']; a[2] += u['L2']; a[3] += u['F2']; a[4] += u['n']
 
 proj, level_votes, local_votes = {}, [0, 0, 0, 0], 0
-def add(uf, L, F, L1, F1, rep):
+def add(uf, L, F, L1, F1, rep, n=1):
     for key in (uf, 'BR'):
         p = proj.setdefault(key, {'L': 0, 'F': 0, 'L1r': 0, 'F1r': 0, 'L2r': 0, 'F2r': 0, 'n': 0, 'nrep': 0})
-        p['L'] += L; p['F'] += F; p['n'] += 1
-        if rep: p['L1r'] += L1; p['F1r'] += F1; p['L2r'] += L; p['F2r'] += F; p['nrep'] += 1
+        p['L'] += L; p['F'] += F; p['n'] += n
+        if rep: p['L1r'] += L1; p['F1r'] += F1; p['L2r'] += L; p['F2r'] += F; p['nrep'] += n
+for u in cobertas: add(u['strata'][1], u['L2'], u['F2'], u['L1'], u['F1'], True, u['n'])
 for u in units.values():
+    if u['fechado'] or u['rep']: continue
     uf = u['strata'][1]
-    if u['rep']: add(uf, u['L2'], u['F2'], u['L1'], u['F1'], True); continue
     for i, s in enumerate(u['strata']):
         a = S.get(s)
         if a and a[4] >= MIN and a[0] and a[1]: break
     else: a, i = None, 3
+    u['nivel'] = i
     level_votes[i] += u['V1']
     if i == 0 or (i == 1 and a[4] >= MIN_UF_LOCAL): local_votes += u['V1']
     if a: add(uf, u['L1'] * a[2] / a[0], u['F1'] * a[3] / a[1], 0, 0, False)
     else: add(uf, 0, 0, 0, 0, False)
 
 pct = lambda a, b: 100 * a / (a + b) if a + b else float('nan')
-rep = [u for u in units.values() if u['rep']]
-V1tot = sum(u['V1'] for u in units.values()); V1rep = sum(u['V1'] for u in rep)
-print(f'Unidades (secoes/agregacoes): {len(units)}  apuradas no 2T: {len(rep)}  ({100*V1rep/V1tot:.2f}% dos votos do 1T)')
+rep = [u for u in units.values() if u['rep']]  # sections with their own BU: section-level statistics only
+V1tot = sum(u['V1'] for u in units.values()); V1rep = sum(u['V1'] for u in cobertas)
+n_cobertas = sum(u['n'] for u in cobertas)
+print(f'Unidades (secoes/agregacoes): {len(units)}  com dados no 2T: {n_cobertas}  ({100*V1rep/V1tot:.2f}% dos votos do 1T)'
+      f'  municipios fechados: {len(mun_units)}  secoes com BU: {len(rep)}')
 print('Nivel usado p/ extrapolar (% dos votos 1T nao apurados): ' + ', '.join(
     f'{n}={100*v/max(1,sum(level_votes)):.1f}%' for n, v in zip(('municipio', 'UF', 'regiao', 'Brasil'), level_votes)))
 if rep:
     d = [pct(u['L2'], u['F2']) - pct(u['L1'], u['F1']) for u in rep if u['L1'] + u['F1'] and u['L2'] + u['F2']]
     print(f"\nSecao a secao (apuradas): delta share Lula (L/(L+F)) 1T->2T: media {statistics.mean(d):+.2f}pp, "
           f"mediana {statistics.median(d):+.2f}pp; Lula ganhou share em {100*sum(x>0 for x in d)/len(d):.0f}% das secoes")
-    L1, F1, L2, F2 = (sum(u[k] for u in rep) for k in ('L1', 'F1', 'L2', 'F2'))
-    print(f'Nas secoes apuradas: Lula {L1}->{L2} ({100*(L2/L1-1):+.1f}%), Flavio {F1}->{F2} ({100*(F2/F1-1):+.1f}%)')
+    L1, F1, L2, F2 = (sum(u[k] for u in cobertas) for k in ('L1', 'F1', 'L2', 'F2'))
+    print(f'Nas secoes com dados: Lula {L1}->{L2} ({100*(L2/L1-1):+.1f}%), Flavio {F1}->{F2} ({100*(F2/F1-1):+.1f}%)')
 print(f"\n{'UF':4}{'apur':>8}{'tot':>8}  {'Lula 1T->2T':>12}{'Flav 1T->2T':>12}  {'Lula% 1T':>9}{'proj 2T':>9}")
 t1uf = {}
 for u in units.values():
@@ -104,11 +121,12 @@ for f in glob.glob(os.path.join(DATA, 'cs-3220-*.json')):
         nomes[f"{os.path.basename(f)[8:10]}-{m['cd']}"] = m['nm']
 lv = dict(zip(('municipio', 'uf', 'regiao', 'brasil'), (round(100 * v / max(1, sum(level_votes)), 2) for v in level_votes)))
 r1 = lambda x: round(x, 2)
-L1, F1, L2, F2 = (sum(u[k] for u in rep) for k in ('L1', 'F1', 'L2', 'F2'))
+L1, F1, L2, F2 = (sum(u[k] for u in cobertas) for k in ('L1', 'F1', 'L2', 'F2'))
 d = d if rep else [0]
 dump('resumo', [{
     'atualizado': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
-    'secoes_total': len(units), 'secoes_apuradas': len(rep), 'pct_votos_1t_apurados': round(100 * V1rep / V1tot, 3),
+    'secoes_total': len(units), 'secoes_apuradas': n_cobertas, 'pct_votos_1t_apurados': round(100 * V1rep / V1tot, 3),
+    'secoes_com_bu': len(rep), 'municipios_fechados': len(mun_units), 'municipios_total': len({u['strata'][0] for u in units.values()}),
     'secoes_publicadas': json.load(open(os.path.join(DATA, 't2_status.json')))['publicadas'],
     'nivel_municipio': lv['municipio'], 'nivel_uf': lv['uf'], 'nivel_regiao': lv['regiao'], 'nivel_brasil': lv['brasil'],
     'nivel_local': round(100 * local_votes / max(1, sum(level_votes)), 2),
@@ -122,12 +140,8 @@ dump('resumo', [{
 }])
 uflevel = {}
 for u in units.values():
-    if u['rep']: continue
-    for i, s in enumerate(u['strata']):
-        a = S.get(s)
-        if a and a[4] >= MIN and a[0] and a[1]: break
-    else: i = 3
-    c = uflevel.setdefault(u['strata'][1], [0, 0, 0, 0]); c[i] += u['V1']
+    if 'nivel' not in u: continue
+    c = uflevel.setdefault(u['strata'][1], [0, 0, 0, 0]); c[u['nivel']] += u['V1']
 NIV = ('município', 'UF', 'região', 'Brasil')
 dump('por_uf', [{
     'uf': k.upper(), 'regiao': REGIAO[k], 'secoes_total': p['n'], 'secoes_apuradas': p['nrep'],
