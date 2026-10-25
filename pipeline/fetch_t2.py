@@ -1,21 +1,47 @@
 """Collect 2nd-round (pleito 3221) presidential BUs already published by TSE, sampled per municipality.
 Re-runnable: cached on disk."""
-import hashlib, json, os, sys, urllib.request
+import collections, hashlib, http.client, json, os, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(__file__))
 import bu
 
-BASE = 'https://resultados.tse.jus.br/oficial/ele2026/arquivo-urna'
+HOST = 'resultados.tse.jus.br'
+BASE = f'https://{HOST}/oficial/ele2026/arquivo-urna'
 UFS = 'ac al am ap ba ce df es go ma mg ms mt pa pb pe pi pr rj rn ro rr rs sc se sp to zz'.split()
 DATA = sys.argv[1]
 AMOSTRA = 30  # max sections per municipality; the projection only needs each municipality's average swing
 
+_local = threading.local()
+
+def fetch(url, tries=8):  # backoff adds up to ~2 min, about how long a TSE rate-limit block lasted
+    """GET with backoff when TSE rate-limits (HTTP 429/503), honoring Retry-After."""
+    for n in range(tries):
+        status, headers, b = _get(url)
+        if status not in (429, 503): break
+        time.sleep(float(headers.get('Retry-After') or 2 ** n))
+    if status != 200: raise RuntimeError(f'HTTP {status} {url}')
+    return b
+
+def _get(url):
+    """GET over one keep-alive HTTPS connection per thread: a TLS handshake per request made the run CPU-bound."""
+    for retry in (False, True):
+        conn = getattr(_local, 'conn', None) or http.client.HTTPSConnection(HOST, timeout=60)
+        _local.conn = conn
+        try:
+            conn.request('GET', url.split(HOST, 1)[1]); r = conn.getresponse(); b = r.read()
+            break
+        except (http.client.HTTPException, OSError):
+            conn.close(); _local.conn = None  # server dropped the idle connection: reconnect once
+            if retry: raise
+    return r.status, r.headers, b
+
 def get(url, path=None):
     if path and os.path.exists(path): return open(path, 'rb').read()
-    with urllib.request.urlopen(url, timeout=60) as r: b = r.read()
+    b = fetch(url)
     if path:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        open(path, 'wb').write(b)
+        open(path + '.tmp', 'wb').write(b)
+        os.replace(path + '.tmp', path)  # atomic: an interrupted run never leaves a truncated file in the cache
     return b
 
 def config(pleito, uf, cache):
@@ -65,12 +91,12 @@ if __name__ == '__main__':
     todo = amostra(publicadas)
     json.dump({'publicadas': len(publicadas)}, open(os.path.join(DATA, 't2_status.json'), 'w'))
     print(f'secoes t2: {len(t2)}  com BU publicado: {len(publicadas)}  na amostra: {len(todo)}', flush=True)
-    out, errs = {}, 0
-    with ThreadPoolExecutor(24) as ex:
+    out, errs = {}, collections.Counter()
+    with ThreadPoolExecutor(16) as ex:  # 64 got HTTP 429 from TSE on election night; keep-alive makes 16 enough
         for f in [ex.submit(one, k) for k in todo]:
             try:
                 k, v = f.result(); out['-'.join(k)] = v
             except Exception as e:
-                errs += 1
+                errs[f'{type(e).__name__}: {e}'.split(' https')[0][:80]] += 1
     json.dump(out, open(os.path.join(DATA, 't2_results.json'), 'w'))
-    print(f'parseados: {len(out)}  erros: {errs}')
+    print(f'parseados: {len(out)}  erros: {sum(errs.values())}', errs.most_common(3) if errs else '')
