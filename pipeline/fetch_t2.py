@@ -1,5 +1,6 @@
-"""Collect 2nd-round (pleito 3221) presidential BUs already published by TSE. Re-runnable: cached on disk."""
-import json, os, sys, urllib.request
+"""Collect 2nd-round (pleito 3221) presidential BUs already published by TSE, sampled per municipality.
+Re-runnable: cached on disk."""
+import hashlib, json, os, sys, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(__file__))
 import bu
@@ -7,6 +8,7 @@ import bu
 BASE = 'https://resultados.tse.jus.br/oficial/ele2026/arquivo-urna'
 UFS = 'ac al am ap ba ce df es go ma mg ms mt pa pb pe pi pr rj rn ro rr rs sc se sp to zz'.split()
 DATA = sys.argv[1]
+AMOSTRA = 30  # max sections per municipality; the projection only needs each municipality's average swing
 
 def get(url, path=None):
     if path and os.path.exists(path): return open(path, 'rb').read()
@@ -24,9 +26,13 @@ def config(pleito, uf, cache):
             for s in z['sec']:
                 yield uf, m['cd'], z['cd'], s
 
+def bu_path(key):
+    uf, mun, zon, sec = key
+    return os.path.join(DATA, 'bu2', uf, f'{mun}-{zon}-{sec}.dat')
+
 def one(key):
     uf, mun, zon, sec = key
-    path = os.path.join(DATA, 'bu2', uf, f'{mun}-{zon}-{sec}.dat')
+    path = bu_path(key)
     if not os.path.exists(path):
         d = f'{BASE}/3221/dados/{uf}/{mun}/{zon}/{sec}'
         aux = json.loads(get(f'{d}/p003221-{uf}-m{mun}-z{zon}-s{sec}-aux.json'))
@@ -34,6 +40,18 @@ def one(key):
         nm = next(a['nm'] for a in h['arq'] if a['tp'] == 'bu')
         get(f'{d}/{h["hash"]}/{nm}', path)
     return key, bu.presidente(path)
+
+def amostra(publicadas, por_municipio=AMOSTRA):
+    """Up to `por_municipio` published sections per municipality, in a fixed pseudo-random order so the
+    sample is stable across runs. Sections already downloaded always stay in (they cost nothing)."""
+    grupos = {}
+    for k in publicadas: grupos.setdefault(k[:2], []).append(k)
+    out = []
+    for ks in grupos.values():
+        cached = [k for k in ks if os.path.exists(bu_path(k))]
+        resto = sorted(set(ks) - set(cached), key=lambda k: hashlib.md5('-'.join(k).encode()).hexdigest())
+        out += cached + resto[:max(0, por_municipio - len(cached))]
+    return out
 
 if __name__ == '__main__':
     # 1st-round configs (static) are cached; 2nd-round configs are refetched every run
@@ -43,8 +61,10 @@ if __name__ == '__main__':
     agg = {'t1': {f'{u}-{m}-{z}-{s["ns"]}': s.get('nsa', []) for u, m, z, s in t1},
            't2': {f'{u}-{m}-{z}-{s["ns"]}': s.get('nsa', []) for u, m, z, s in t2}}
     json.dump(agg, open(os.path.join(DATA, 'aggregations.json'), 'w'))
-    todo = [(u, m, z, s['ns']) for u, m, z, s in t2 if 'da' in s]
-    print(f'secoes t2: {len(t2)}  com BU publicado: {len(todo)}', flush=True)
+    publicadas = [(u, m, z, s['ns']) for u, m, z, s in t2 if 'da' in s]
+    todo = amostra(publicadas)
+    json.dump({'publicadas': len(publicadas)}, open(os.path.join(DATA, 't2_status.json'), 'w'))
+    print(f'secoes t2: {len(t2)}  com BU publicado: {len(publicadas)}  na amostra: {len(todo)}', flush=True)
     out, errs = {}, 0
     with ThreadPoolExecutor(24) as ex:
         for f in [ex.submit(one, k) for k in todo]:

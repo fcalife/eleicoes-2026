@@ -8,6 +8,7 @@ reported units in the finest stratum with >= MIN reported units: municipality ->
 import json, os, sys, statistics
 DATA = sys.argv[1]
 MIN = 10
+MIN_UF_LOCAL = 200  # a UF-level extrapolation only counts as "local" (reliability badge) with this many sampled units
 REGIAO = {**dict.fromkeys('ac am ap pa ro rr to'.split(), 'N'), **dict.fromkeys('al ba ce ma pb pe pi rn se'.split(), 'NE'),
           **dict.fromkeys('df go ms mt'.split(), 'CO'), **dict.fromkeys('es mg rj sp'.split(), 'SE'),
           **dict.fromkeys('pr rs sc'.split(), 'S'), 'zz': 'EXT'}
@@ -50,7 +51,7 @@ for u in units.values():
     for s in u['strata']:
         a = S.setdefault(s, [0, 0, 0, 0, 0]); a[0] += u['L1']; a[1] += u['F1']; a[2] += u['L2']; a[3] += u['F2']; a[4] += 1
 
-proj, level_votes = {}, [0, 0, 0, 0]
+proj, level_votes, local_votes = {}, [0, 0, 0, 0], 0
 def add(uf, L, F, L1, F1, rep):
     for key in (uf, 'BR'):
         p = proj.setdefault(key, {'L': 0, 'F': 0, 'L1r': 0, 'F1r': 0, 'L2r': 0, 'F2r': 0, 'n': 0, 'nrep': 0})
@@ -64,6 +65,7 @@ for u in units.values():
         if a and a[4] >= MIN and a[0] and a[1]: break
     else: a, i = None, 3
     level_votes[i] += u['V1']
+    if i == 0 or (i == 1 and a[4] >= MIN_UF_LOCAL): local_votes += u['V1']
     if a: add(uf, u['L1'] * a[2] / a[0], u['F1'] * a[3] / a[1], 0, 0, False)
     else: add(uf, 0, 0, 0, 0, False)
 
@@ -107,7 +109,9 @@ d = d if rep else [0]
 dump('resumo', [{
     'atualizado': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
     'secoes_total': len(units), 'secoes_apuradas': len(rep), 'pct_votos_1t_apurados': round(100 * V1rep / V1tot, 3),
+    'secoes_publicadas': json.load(open(os.path.join(DATA, 't2_status.json')))['publicadas'],
     'nivel_municipio': lv['municipio'], 'nivel_uf': lv['uf'], 'nivel_regiao': lv['regiao'], 'nivel_brasil': lv['brasil'],
+    'nivel_local': round(100 * local_votes / max(1, sum(level_votes)), 2),
     'delta_media_pp': r1(statistics.mean(d)), 'delta_mediana_pp': r1(statistics.median(d)),
     'pct_secoes_lula_ganhou': r1(100 * sum(x > 0 for x in d) / len(d)),
     'lula_1t_apuradas': L1, 'flavio_1t_apuradas': F1, 'lula_2t_apuradas': L2, 'flavio_2t_apuradas': F2,

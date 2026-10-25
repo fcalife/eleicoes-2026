@@ -121,20 +121,22 @@ window.dash = (() => {
   <header style="display:flex;flex-direction:column;gap:var(--cds-gap-sm)">
     <h1 id="titulo">Lula × Flávio, seção a seção</h1>
     <p class="lf-takeaway" id="resumo-frase">
-      Com <span data-source="resumo" data-field="pct_votos_1t_apurados" data-row="0" data-fmt="pct3">—</span> dos votos do 1º turno já apurados também no 2º,
+      O TSE já publicou <span data-source="resumo" data-field="secoes_publicadas" data-row="0" data-fmt="int">—</span> boletins do 2º turno.
+      Numa amostra de <span data-source="resumo" data-field="secoes_apuradas" data-row="0" data-fmt="int">—</span> seções
+      (<span data-source="resumo" data-field="pct_votos_1t_apurados" data-row="0" data-fmt="pct3">—</span> dos votos do 1º turno),
       a extrapolação dá Lula <b data-source="resumo" data-field="lula_proj_pct" data-row="0" data-fmt="pct">—</b>
       × Flávio <b data-source="resumo" data-field="flavio_proj_pct" data-row="0" data-fmt="pct">—</b> dos votos válidos.
     </p>
     <div class="lf-status">
       <span class="lf-pill" id="pill" data-source="confiabilidade" data-field="status" data-row="0">—</span>
-      <span class="lf-muted"><span data-source="confiabilidade" data-field="local_pct" data-row="0" data-fmt="pct">—</span> dos votos ainda não apurados foram estimados com dados do próprio município ou UF; o resto usa a média regional ou nacional.</span>
+      <span class="lf-muted"><span data-source="confiabilidade" data-field="local_pct" data-row="0" data-fmt="pct">—</span> dos votos fora da amostra foram estimados com dados do próprio município ou de uma UF com pelo menos 200 seções na amostra.</span>
       <span class="lf-muted">Dados do TSE coletados em <span data-source="resumo" data-field="atualizado" data-row="0" data-fmt="data">—</span>.</span>
     </div>
   </header>
 
   <section class="lf-card" id="projecao">
     <h2>Projeção do 2º turno</h2>
-    <p class="lf-muted">Votos válidos. Seções apuradas entram com o resultado real; as demais, com o voto do 1º turno ajustado pela variação das seções vizinhas já apuradas.</p>
+    <p class="lf-muted">Votos válidos. Seções da amostra entram com o resultado real; as demais, com o voto do 1º turno ajustado pela variação das seções vizinhas da amostra.</p>
     <div class="lf-split dash-skeleton" id="split" data-source="resumo"></div>
     <div class="lf-legend">
       <span><span class="lf-sw" id="sw-l"></span>Lula <b class="lf-big" data-source="resumo" data-field="lula_proj_pct" data-row="0" data-fmt="pct">—</b><br><span class="lf-muted"><span data-source="resumo" data-field="lula_proj" data-row="0" data-fmt="int">—</span> votos</span></span>
@@ -145,9 +147,9 @@ window.dash = (() => {
 
   <section class="lf-tiles" id="numeros">
     <div class="lf-card">
-      <span class="lf-muted">Seções apuradas no 2º turno</span>
-      <span class="lf-big" data-source="resumo" data-field="secoes_apuradas" data-row="0" data-fmt="int">—</span>
-      <span class="lf-muted">de <span data-source="resumo" data-field="secoes_total" data-row="0" data-fmt="int">—</span> seções (agregações somadas)</span>
+      <span class="lf-muted">Boletins do 2º turno publicados</span>
+      <span class="lf-big" data-source="resumo" data-field="secoes_publicadas" data-row="0" data-fmt="int">—</span>
+      <span class="lf-muted"><span data-source="resumo" data-field="secoes_apuradas" data-row="0" data-fmt="int">—</span> na amostra, de <span data-source="resumo" data-field="secoes_total" data-row="0" data-fmt="int">—</span> seções (agregações somadas)</span>
     </div>
     <div class="lf-card">
       <span class="lf-muted">Fatia de Lula no voto a dois, seção a seção</span>
@@ -157,10 +159,10 @@ window.dash = (() => {
     <div class="lf-card">
       <span class="lf-muted">Seções onde Lula ganhou fatia</span>
       <span class="lf-big" data-source="resumo" data-field="pct_secoes_lula_ganhou" data-row="0" data-fmt="pct">—</span>
-      <span class="lf-muted">entre as seções já apuradas</span>
+      <span class="lf-muted">entre as seções da amostra</span>
     </div>
     <div class="lf-card">
-      <span class="lf-muted">Votos nas seções apuradas, 1º → 2º turno</span>
+      <span class="lf-muted">Votos nas seções da amostra, 1º → 2º turno</span>
       <span class="lf-big"><span data-source="variacao_apuradas" data-field="lula_var_pct" data-row="0" data-fmt="spct">—</span> <span class="lf-muted">Lula</span></span>
       <span class="lf-muted">Flávio <span data-source="variacao_apuradas" data-field="flavio_var_pct" data-row="0" data-fmt="spct">—</span>. A diferença inclui a mudança de comparecimento.</span>
     </div>
@@ -169,7 +171,7 @@ window.dash = (() => {
   <div class="lf-grid">
     <section class="lf-card" id="dispersao">
       <h2>Cada seção, 1º turno × 2º turno</h2>
-      <p class="lf-muted">Fatia de Lula no voto a dois (Lula ÷ Lula + Flávio). Acima da diagonal, Lula cresceu na seção. Amostra de até 3.000 seções apuradas.</p>
+      <p class="lf-muted">Fatia de Lula no voto a dois (Lula ÷ Lula + Flávio). Acima da diagonal, Lula cresceu na seção. Até 3.000 seções sorteadas da amostra.</p>
       <div class="lf-chart dash-skeleton" id="scatter" data-source="secoes"></div>
     </section>
     <section class="lf-card" id="distribuicao">
@@ -181,13 +183,13 @@ window.dash = (() => {
 
   <section class="lf-card" id="ufs">
     <h2>Por estado</h2>
-    <p class="lf-muted">Variação de votos medida só nas seções já apuradas da UF. A coluna da base diz de onde veio a maior parte da extrapolação dos votos que faltam.</p>
+    <p class="lf-muted">Variação de votos medida só nas seções da amostra na UF. A coluna da base diz de onde veio a maior parte da extrapolação dos votos que faltam.</p>
     <div class="lf-tablebox dash-skeleton" id="tablebox">
       <table id="tabela" data-source="por_uf" data-row-key="uf">
         <thead><tr>
           <th data-field="uf"><button type="button" data-k="uf">UF</button></th>
           <th data-field="regiao"><button type="button" data-k="regiao">Região</button></th>
-          <th data-field="secoes_apuradas"><button type="button" data-k="secoes_apuradas">Apuradas</button></th>
+          <th data-field="secoes_apuradas"><button type="button" data-k="secoes_apuradas">Na amostra</button></th>
           <th data-field="secoes_total"><button type="button" data-k="secoes_total">Seções</button></th>
           <th data-field="lula_var_pct"><button type="button" data-k="lula_var_pct">Lula 1º→2º</button></th>
           <th data-field="flavio_var_pct"><button type="button" data-k="flavio_var_pct">Flávio 1º→2º</button></th>
@@ -205,7 +207,8 @@ window.dash = (() => {
     <ul>
       <li>O 1º turno vem do arquivo oficial de votação por seção do TSE. O 2º turno vem dos boletins de urna que o TSE publica conforme as urnas são recebidas, lidos um a um.</li>
       <li>Seções agregadas numa mesma urna são somadas, para que os dois turnos sempre comparem os mesmos eleitores.</li>
-      <li>Para cada seção ainda sem boletim, os votos de Lula e de Flávio no 1º turno são multiplicados pela variação de cada um nas seções apuradas do mesmo município. Com menos de 10 seções apuradas no município, usa-se a UF; depois a região; por último, o Brasil.</li>
+      <li>Para não baixar todos os boletins, a amostra usa até 30 seções publicadas por município, sorteadas numa ordem fixa. Municípios menores entram inteiros.</li>
+      <li>Para cada seção fora da amostra, os votos de Lula e de Flávio no 1º turno são multiplicados pela variação de cada um nas seções da amostra do mesmo município. Com menos de 10 seções na amostra do município, usa-se a UF; depois a região; por último, o Brasil.</li>
       <li>Fatias de 1º turno nesta página são do voto a dois (Lula ÷ Lula + Flávio), não do total de válidos com todos os candidatos.</li>
       <li>As primeiras seções a chegar não são sorteadas, nem dentro de um município. Enquanto o selo acima não disser "Confiável", leia a projeção como indicativa.</li>
     </ul>
@@ -238,9 +241,9 @@ window.dash = (() => {
   dash.calc('confiabilidade', {
     inputs: ['resumo'],
     title: 'Confiabilidade da projeção',
-    description: 'Parcela dos votos não apurados extrapolada com dados do próprio município ou UF: 80% ou mais é confiável, 40% ou mais é indicativa.',
+    description: 'Parcela dos votos não apurados extrapolada com dados do próprio município ou de uma UF com pelo menos 200 seções na amostra: 80% ou mais é confiável, 40% ou mais é indicativa.',
     fn: (resumo) => {
-      const local = Math.round(100 * (resumo[0].nivel_municipio + resumo[0].nivel_uf)) / 100;
+      const local = resumo[0].nivel_local;
       return [{ local_pct: local, status: local >= 80 ? 'Confiável' : local >= 40 ? 'Indicativa' : 'Não confiável' }];
     },
   });

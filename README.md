@@ -2,7 +2,7 @@
 
 Static site (GitHub Pages, `/docs` on `main`) comparing the 1st and 2nd round of the 2026 presidential election section by section, and projecting the 2nd-round result from the ballot-box reports (boletins de urna) TSE has published so far.
 
-- `pipeline/` — Python, stdlib only. `fetch_t2.py` downloads published 2nd-round BUs (cached in `data/bu2`), `bu.py` decodes them, `analyze.py` matches sections across rounds and extrapolates.
+- `pipeline/` — Python, stdlib only. `fetch_t2.py` downloads a sample of published 2nd-round BUs, up to 30 per municipality (`AMOSTRA`; cached in `data/bu2`), `bu.py` decodes them, `analyze.py` matches sections across rounds and extrapolates.
 - `docs/` — the site. `docs/data/*.json` is what `analyze.py` writes to `data/dash/`.
 - `./publish.sh` — reruns the pipeline and refreshes `docs/data`. The first run also downloads TSE's 1st-round per-section CSV.
 
