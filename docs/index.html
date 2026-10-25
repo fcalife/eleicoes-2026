@@ -252,7 +252,9 @@ window.dash = (() => {
       el.textContent = v == null ? '—' : el.dataset.fmt ? FMT[el.dataset.fmt](v) : String(v);
     });
     const c = dash.data('confiabilidade');
-    document.getElementById('pill').dataset.status = c.status === 'ok' && c.data[0] ? c.data[0].status : '';
+    const pill = document.getElementById('pill');
+    pill.dataset.status = c.status === 'ok' && c.data[0] ? c.data[0].status : '';
+    pill.hidden = !pill.dataset.status;
   });
 })();
 </script>
