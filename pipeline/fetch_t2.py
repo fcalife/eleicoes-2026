@@ -1,4 +1,5 @@
-"""Collect 2nd-round (pleito 3221) presidential BUs already published by TSE, sampled per municipality.
+"""Collect 2nd-round (pleito 3221) presidential results from TSE. Hybrid: each municipality's consolidated result
+(used whole once it is 100% totalized) plus a sample of section BUs from municipalities still partial.
 Re-runnable: cached on disk."""
 import collections, hashlib, http.client, json, os, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
@@ -7,6 +8,7 @@ import bu
 
 HOST = 'resultados.tse.jus.br'
 BASE = f'https://{HOST}/oficial/ele2026/arquivo-urna'
+MUN = f'https://{HOST}/oficial/ele2026/6258/dados'
 UFS = 'ac al am ap ba ce df es go ma mg ms mt pa pb pe pi pr rj rn ro rr rs sc se sp to zz'.split()
 DATA = sys.argv[1]
 AMOSTRA = 30  # max sections per municipality; the projection only needs each municipality's average swing
@@ -67,6 +69,20 @@ def one(key):
         get(f'{d}/{h["hash"]}/{nm}', path)
     return key, bu.presidente(path)
 
+def municipio(key):
+    """Consolidated 2nd-round result of one municipality: sections totalized (st) of total (ts) and votes.
+    Cached once 100% totalized, since it can no longer change."""
+    uf, mun = key
+    path = os.path.join(DATA, 'mun2', f'{uf}-{mun}.json')
+    if os.path.exists(path): return key, json.load(open(path))
+    d = json.loads(fetch(f'{MUN}/{uf}/{uf}{mun}-c0001-e006258-u.json'))
+    votos = {x['n']: int(x['vap']) for a in d['carg'][0]['agr'] for p in a['par'] for x in p['cand']}
+    r = {'ts': int(d['s']['ts']), 'st': int(d['s']['st']), '13': votos.get('13', 0), '22': votos.get('22', 0)}
+    if r['ts'] and r['st'] == r['ts']:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        json.dump(r, open(path + '.tmp', 'w')); os.replace(path + '.tmp', path)
+    return key, r
+
 def amostra(publicadas, por_municipio=AMOSTRA):
     """Up to `por_municipio` published sections per municipality, in a fixed pseudo-random order so the
     sample is stable across runs. Sections already downloaded always stay in (they cost nothing)."""
@@ -88,15 +104,28 @@ if __name__ == '__main__':
            't2': {f'{u}-{m}-{z}-{s["ns"]}': s.get('nsa', []) for u, m, z, s in t2}}
     json.dump(agg, open(os.path.join(DATA, 'aggregations.json'), 'w'))
     publicadas = [(u, m, z, s['ns']) for u, m, z, s in t2 if 'da' in s]
-    todo = amostra(publicadas)
+
+    def run(fn, keys):
+        out, errs = {}, collections.Counter()
+        with ThreadPoolExecutor(8) as ex:  # 64 and then 16 got HTTP 429 from TSE on election night; stay polite
+            for f in [ex.submit(fn, k) for k in keys]:
+                try:
+                    k, v = f.result(); out['-'.join(k)] = v
+                except Exception as e:
+                    errs[f'{type(e).__name__}: {e}'.split(' https')[0][:80]] += 1
+        return out, errs
+
+    mun, errs = run(municipio, sorted({(u, m) for u, m, z, s in t2}))
+    json.dump(mun, open(os.path.join(DATA, 't2_municipios.json'), 'w'))
+    fechados = {k for k, r in mun.items() if r['ts'] and r['st'] == r['ts']}
+    print(f'municipios: {len(mun)}  100% totalizados: {len(fechados)}  erros: {sum(errs.values())}',
+          errs.most_common(3) if errs else '', flush=True)
+
+    # sample only partial municipalities; BUs already cached elsewhere still feed the section-level charts
+    fechado = lambda k: '-'.join(k[:2]) in fechados
+    todo = amostra([k for k in publicadas if not fechado(k)]) + [k for k in publicadas if fechado(k) and os.path.exists(bu_path(k))]
     json.dump({'publicadas': len(publicadas)}, open(os.path.join(DATA, 't2_status.json'), 'w'))
     print(f'secoes t2: {len(t2)}  com BU publicado: {len(publicadas)}  na amostra: {len(todo)}', flush=True)
-    out, errs = {}, collections.Counter()
-    with ThreadPoolExecutor(16) as ex:  # 64 got HTTP 429 from TSE on election night; keep-alive makes 16 enough
-        for f in [ex.submit(one, k) for k in todo]:
-            try:
-                k, v = f.result(); out['-'.join(k)] = v
-            except Exception as e:
-                errs[f'{type(e).__name__}: {e}'.split(' https')[0][:80]] += 1
+    out, errs = run(one, todo)
     json.dump(out, open(os.path.join(DATA, 't2_results.json'), 'w'))
     print(f'parseados: {len(out)}  erros: {sum(errs.values())}', errs.most_common(3) if errs else '')
